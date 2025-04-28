@@ -1,1 +1,266 @@
+import time
+import pandas as pd
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import ElementNotInteractableException, NoSuchElementException, TimeoutException
+from webdriver_manager.chrome import ChromeDriverManager
+from selenium.webdriver.common.action_chains import ActionChains
+from selenium.webdriver.common.keys import Keys
+
+
+
+# List to store all saved file names
+saved_files = []
+
+# List of RedBus URLs for each state
+state_links = [
+    "https://www.redbus.in/online-booking/ksrtc-kerala/?utm_source=rtchometile",
+    "https://www.redbus.in/online-booking/apsrtc/?utm_source=rtchometile",
+    "https://www.redbus.in/online-booking/tsrtc/?utm_source=rtchometile",
+    "https://www.redbus.in/online-booking/ktcl/?utm_source=rtchometile",
+    "https://www.redbus.in/online-booking/rsrtc/?utm_source=rtchometile",
+    "https://www.redbus.in/online-booking/south-bengal-state-transport-corporation-sbstc/?utm_source=rtchometile",
+    "https://www.redbus.in/online-booking/hrtc/?utm_source=rtchometile",
+    "https://www.redbus.in/online-booking/astc/?utm_source=rtchometile",
+    "https://www.redbus.in/online-booking/uttar-pradesh-state-road-transport-corporation-upsrtc/?utm_source=rtchometile",
+    "https://www.redbus.in/online-booking/wbtc-ctc/?utm_source=rtchometile"
+]
+
+# Function to extract route links and names
+def get_route_links(driver, path="//a[@class='route']"):
+    LINKS = []
+    ROUTES = []
+    wait = WebDriverWait(driver, 10)
+
+    while True:
+        try:
+            elements = driver.find_elements(By.XPATH, path)
+            for el in elements:
+                link = el.get_attribute("href")
+                if link:
+                    LINKS.append(link)
+                ROUTES.append(el.text)
+
+            # Handle pagination
+            try:
+                current = driver.find_element(By.XPATH, "//div[@class='DC_117_pageTabs DC_117_pageActive']")
+                next_num = str(int(current.text) + 1)
+                next_xpath = f"//div[@class='DC_117_paginationTable']//div[text()='{next_num}']"
+                next_btn = wait.until(EC.presence_of_element_located((By.XPATH, next_xpath)))
+
+                driver.execute_script("arguments[0].scrollIntoView(true);", next_btn)
+                time.sleep(1)
+
+                try:
+                    next_btn.click()
+                except ElementNotInteractableException:
+                    driver.execute_script("arguments[0].click();", next_btn)
+
+                print(f"Navigated to page {next_num}")
+                time.sleep(10)
+
+            except (NoSuchElementException, TimeoutException):
+                print("No more pages.")
+                break
+
+        except Exception as e:
+            print("Error occurred:", e)
+            break
+
+    return LINKS, ROUTES
+
+# Master WebDriver setup
+driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()))
+driver.maximize_window()
+
+# Loop over each state link
+for url in state_links:
+    print(f"Processing: {url}")
+    driver.get(url)
+    time.sleep(3)
+
+    state_name = url.split("/")[4].split("?")[0].replace("-", "_")  # Get clean state identifier
+    links, routes = get_route_links(driver)
+    
+    df = pd.DataFrame({"Route_name": routes, "Route_link": links})
+    file_name = f"{state_name}.csv"
+    df.to_csv(file_name, index=False)
+    print(f"Saved: {file_name}\n")
+
+# Done with all states
+driver.quit()
+print("✅ All states processed and saved.")
+
+
+
+
+# Assuming route_link is already defined as a dictionary with route links
+route_link = {
+    "rsrtc_route_link": pd.read_csv(r"D:\GUVI_PROJECT\redbusdataharvesting\rsrtc.csv"),
+    "ksrtc_kerala_route_link": pd.read_csv(r"D:\GUVI_PROJECT\redbusdataharvesting\ksrtc_kerala.csv"),
+    "tsrtc_karnataka_route_link": pd.read_csv(r"D:\GUVI_PROJECT\redbusdataharvesting\tsrtc.csv"),
+    "ktcl_maharashtra_route_link": pd.read_csv(r"D:\GUVI_PROJECT\redbusdataharvesting\ktcl.csv"),
+    "south_bengal_route_link": pd.read_csv(r"D:\GUVI_PROJECT\redbusdataharvesting\south_bengal_state_transport_corporation_sbstc.csv"),
+    "hrtc_route_link": pd.read_csv(r"D:\GUVI_PROJECT\redbusdataharvesting\hrtc.csv"),
+    "astc_route_link": pd.read_csv(r"D:\GUVI_PROJECT\redbusdataharvesting\astc.csv"),
+    "up_route_link": pd.read_csv(r"D:\GUVI_PROJECT\redbusdataharvesting\uttar_pradesh_state_road_transport_corporation_upsrtc.csv"),
+    "wbtc_route_link": pd.read_csv(r"D:\GUVI_PROJECT\redbusdataharvesting\wbtc_ctc.csv")
+}
+
+# Initialize lists to store bus details
+Bus_names_k = []
+Bus_types_k = []
+Departure_k = []
+Arrival_k = []
+Ratings_k = []
+Total_Duration_k = []
+Prices_k = []
+Seats_Available_k = []
+Route_names = []
+Route_links = []
+
+# Initialize the WebDriver
+driver_k = webdriver.Chrome()
+
+# Loop through the dictionary of route links
+for key, df in route_link.items():
+    # Iterate through each row in the dataframe
+    for i, r in df.iterrows():
+        link = r["Route_link"]   # Extract route link
+        routes = r["Route_name"]  # Extract route name
+
+        # Loop through each link
+        driver_k.get(link)  # Navigate to the route link
+        time.sleep(2)  # Wait for the page to load
+
+        # Click on elements to reveal bus details
+        elements = driver_k.find_elements(By.XPATH, f"//a[contains(@href, '{link}')]")
+        for element in elements:
+            element.click()  # Click on the element to load bus details
+            time.sleep(2)
+
+        # Click the 'View Buses' button
+        try:
+            clicks = driver_k.find_element(By.XPATH, "//div[@class='button']")
+            clicks.click()
+        except:
+            continue
+        time.sleep(2)
+
+        # Scroll the page to load dynamic content
+        scrolling = True
+        while scrolling:
+            old_page_source = driver_k.page_source
+            ActionChains(driver_k).send_keys(Keys.PAGE_DOWN).perform()  # Scroll down
+            time.sleep(5)
+            new_page_source = driver_k.page_source
+
+            if new_page_source == old_page_source:
+                scrolling = False  # Stop scrolling if no new content is loaded
+
+        # Extract bus details
+        bus_name = driver_k.find_elements(By.XPATH, "//div[@class='travels lh-24 f-bold d-color']")
+        bus_type = driver_k.find_elements(By.XPATH, "//div[@class='bus-type f-12 m-top-16 l-color evBus']")
+        start_time = driver_k.find_elements(By.XPATH, "//*[@class='dp-time f-19 d-color f-bold']")
+        end_time = driver_k.find_elements(By.XPATH, "//*[@class='bp-time f-19 d-color disp-Inline']")
+        total_duration = driver_k.find_elements(By.XPATH, "//*[@class='dur l-color lh-24']")
+        price = driver_k.find_elements(By.XPATH, '//div[@class="fare d-block"]//span')
+        seats = driver_k.find_elements(By.XPATH, "//div[contains(@class, 'seat-left')]")
+
+        try:
+            rating = driver_k.find_elements(By.XPATH,"//div[@class='clearfix row-one']/div[@class='column-six p-right-10 w-10 fl']")
+        except:
+            continue
+
+        # Append data to the respective lists
+        for bus in bus_name:
+            Bus_names_k.append(bus.text)
+            Route_links.append(link)
+            Route_names.append(routes)
+        for bus_type_elem in bus_type:
+            Bus_types_k.append(bus_type_elem.text)
+        for start_time_elem in start_time:
+            Departure_k.append(start_time_elem.text)
+        for end_time_elem in end_time:
+            Arrival_k.append(end_time_elem.text)
+        for total_duration_elem in total_duration:
+            Total_Duration_k.append(total_duration_elem.text)
+        for ratings in rating:
+            Ratings_k.append(ratings.text)
+        for price_elem in price:
+            Prices_k.append(price_elem.text)
+        for seats_elem in seats:
+            Seats_Available_k.append(seats_elem.text)
+
+print("Successfully Completed")cv 
+
+
+
+
+
+import pandas as pd
+
+# Your lists are already collected:
+# Bus_names_k, Bus_types_k, Departure_k, Arrival_k, Ratings_k, 
+# Total_Duration_k, Prices_k, Seats_Available_k, Route_names, Route_links
+
+# 1. Find the maximum length among all lists
+max_len = max(
+    len(Bus_names_k), len(Bus_types_k), len(Departure_k), len(Arrival_k),
+    len(Ratings_k), len(Total_Duration_k), len(Prices_k), len(Seats_Available_k),
+    len(Route_names), len(Route_links)
+)
+
+# 2. Define a function to pad lists
+def pad_list(lst, target_length):
+    return lst + ["N/A"] * (target_length - len(lst))
+
+# 3. Pad each list to have the same length
+Bus_names_k = pad_list(Bus_names_k, max_len)
+Bus_types_k = pad_list(Bus_types_k, max_len)
+Departure_k = pad_list(Departure_k, max_len)
+Arrival_k = pad_list(Arrival_k, max_len)
+Ratings_k = pad_list(Ratings_k, max_len)
+Total_Duration_k = pad_list(Total_Duration_k, max_len)
+Prices_k = pad_list(Prices_k, max_len)
+Seats_Available_k = pad_list(Seats_Available_k, max_len)
+Route_names = pad_list(Route_names, max_len)
+Route_links = pad_list(Route_links, max_len)
+
+# 4. Now create the data dictionary again
+data = {
+    "Bus Name": Bus_names_k,
+    "Bus Type": Bus_types_k,
+    "Departure": Departure_k,
+    "Arrival": Arrival_k,
+    "Rating": Ratings_k,
+    "Total Duration": Total_Duration_k,
+    "Price": Prices_k,
+    "Seats Available": Seats_Available_k,
+    "Route Name": Route_names,
+    "Route Link": Route_links
+}
+
+# 5. Convert to DataFrame
+df = pd.DataFrame(data)
+
+# 6. Save to CSV
+save_path = r"D:\GUVI_PROJECT\redbusdataharvesting\red_busz_integrated.csv"
+df.to_csv(save_path, index=False)
+
+print(f"✅ Data saved successfully to {save_path}")
+
+
+
+red_busz_integrated= pd.read_csv(r"D:\GUVI_PROJECT\redbusdataharvesting\red_busz_integrated.csv")
+
+
+
+
+red_busz_integrated.tail(18)
+
+
 
