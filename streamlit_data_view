@@ -1,1 +1,118 @@
+import streamlit as st
+import pandas as pd
+
+# Title of the app
+st.title("Red Bus Insights")
+
+# Upload CSV file
+uploaded_file = st.file_uploader("Upload your CSV file", type="csv")
+
+# Function to convert 'hh:mm' format into minutes
+def convert_duration_to_minutes(duration):
+    try:
+        hours, minutes = 0, 0
+        if 'h' in duration:
+            hours = int(duration.split('h')[0].strip())
+        if 'm' in duration:
+            minutes = int(duration.split('m')[0].split('h')[-1].strip())
+        return hours * 60 + minutes
+    except:
+        return 0  # In case the duration format is invalid
+
+if uploaded_file is not None:
+    # Read the CSV file
+    df = pd.read_csv(uploaded_file)
+
+    # Convert 'Total Duration' column to numeric values (minutes)
+    df['Total Duration (Minutes)'] = df['Total Duration'].apply(convert_duration_to_minutes)
+
+    # Main dropdown for selecting the type of view
+    app_mode = st.selectbox("Select the data type", ["Filtered Data", "Analysis Data"])
+
+    if app_mode == "Filtered Data":
+        # Create a sidebar for Route selection
+        st.sidebar.title("Filters")
+
+        # Filter by Route Name
+        route_options = df['Route Name'].unique()  # Get unique routes
+        selected_route = st.sidebar.selectbox("Select Route", route_options)
+
+        # Filter data based on selected Route Name
+        filtered_data = df[df['Route Name'] == selected_route]
+
+        # Sorting options for Total Duration
+        st.sidebar.write("### Sort by Total Duration")
+        duration_sort_order = st.sidebar.selectbox("Sort by Total Duration", ["Lowest to Highest", "Highest to Lowest"])
+
+        if duration_sort_order == "Lowest to Highest":
+            filtered_data = filtered_data.sort_values(by='Total Duration (Minutes)', ascending=True)
+        elif duration_sort_order == "Highest to Lowest":
+            filtered_data = filtered_data.sort_values(by='Total Duration (Minutes)', ascending=False)
+
+        # Sorting options for Price
+        st.sidebar.write("### Sort by Price")
+        price_sort_order = st.sidebar.selectbox("Sort by Price", ["Lowest to Highest", "Highest to Lowest"])
+
+        if price_sort_order == "Lowest to Highest":
+            filtered_data = filtered_data.sort_values(by='Price', ascending=True)
+        elif price_sort_order == "Highest to Lowest":
+            filtered_data = filtered_data.sort_values(by='Price', ascending=False)
+
+        # Additional filters for duration and price
+        st.sidebar.write("### Filter by Duration/Price")
+        
+        # Filter by Total Duration (in minutes)
+        duration_min, duration_max = st.sidebar.slider(
+            "Select duration range (in minutes)", 
+            min_value=int(filtered_data['Total Duration (Minutes)'].min()), 
+            max_value=int(filtered_data['Total Duration (Minutes)'].max()), 
+            value=(int(filtered_data['Total Duration (Minutes)'].min()), int(filtered_data['Total Duration (Minutes)'].max()))
+        )
+        filtered_data = filtered_data[
+            (filtered_data['Total Duration (Minutes)'] >= duration_min) & 
+            (filtered_data['Total Duration (Minutes)'] <= duration_max)
+        ]
+        
+        # Filter by Price
+        price_min, price_max = st.sidebar.slider(
+            "Select price range (in ₹)", 
+            min_value=int(filtered_data['Price'].min()), 
+            max_value=int(filtered_data['Price'].max()), 
+            value=(int(filtered_data['Price'].min()), int(filtered_data['Price'].max()))
+        )
+        
+        filtered_data = filtered_data[
+            (filtered_data['Price'] >= price_min) & 
+            (filtered_data['Price'] <= price_max)
+        ]
+        
+        # Show the final filtered and sorted data
+        st.write(f"### Filtered Data (Route: {selected_route}, Duration: {duration_min}-{duration_max} minutes, Price: ₹{price_min}-{price_max}):")
+        st.dataframe(filtered_data)
+
+    elif app_mode == "Analysis Data":
+        # Analysis section where you can add summary statistics or other analysis
+        st.write("### Analysis Data")
+        
+        # Show summary statistics
+        if st.checkbox("Show Summary Statistics"):
+            st.write(df.describe())
+        
+        # Correlation matrix
+        if st.checkbox("Show Correlation Matrix"):
+            import seaborn as sns
+            import matplotlib.pyplot as plt
+            
+            correlation = df.corr()
+            fig, ax = plt.subplots(figsize=(10, 6))
+            sns.heatmap(correlation, annot=True, cmap='coolwarm', ax=ax)
+            st.pyplot(fig)
+        
+        # Show column names
+        st.write("### Column Names:")
+        st.write(df.columns)
+
+        # Show the dataframe in this analysis section
+        st.write("### Data Preview:")
+        st.dataframe(df.head())  # Show first 5 rows
 
