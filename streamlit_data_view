@@ -1,118 +1,120 @@
 import streamlit as st
 import pandas as pd
+import pymysql
 
-# Title of the app
+# Streamlit title
 st.title("Red Bus Insights")
 
-# Upload CSV file
-uploaded_file = st.file_uploader("Upload your CSV file", type="csv")
+# SQL database connection
+connection = pymysql.connect(
+    host='localhost',
+    user='root',
+    password='Arun@5851',
+    database='guvi'
+)
 
-# Function to convert 'hh:mm' format into minutes
+# Query the data
+query = "SELECT * FROM red_bus_details"
+df = pd.read_sql(query, connection)
+
+# Convert 'hh:mm' format duration into minutes
 def convert_duration_to_minutes(duration):
     try:
         hours, minutes = 0, 0
         if 'h' in duration:
             hours = int(duration.split('h')[0].strip())
         if 'm' in duration:
-            minutes = int(duration.split('m')[0].split('h')[-1].strip())
+            minutes = int(duration.split('m')[-2].split('h')[-1].strip())
         return hours * 60 + minutes
     except:
-        return 0  # In case the duration format is invalid
+        return 0
 
-if uploaded_file is not None:
-    # Read the CSV file
-    df = pd.read_csv(uploaded_file)
+# Apply duration conversion
+df['Total Duration (Minutes)'] = df['Duration'].apply(convert_duration_to_minutes)
 
-    # Convert 'Total Duration' column to numeric values (minutes)
-    df['Total Duration (Minutes)'] = df['Total Duration'].apply(convert_duration_to_minutes)
+# Convert necessary columns to numeric
+df['Bus_Spare'] = pd.to_numeric(df['Bus_Spare'], errors='coerce')
+df['Total Duration (Minutes)'] = pd.to_numeric(df['Total Duration (Minutes)'], errors='coerce')
+df['Bus_Rating'] = pd.to_numeric(df['Bus_Rating'], errors='coerce')
+df = df.dropna(subset=['Bus_Spare', 'Total Duration (Minutes)', 'Bus_Rating'])
 
-    # Main dropdown for selecting the type of view
-    app_mode = st.selectbox("Select the data type", ["Filtered Data", "Analysis Data"])
+# Rename columns for convenience
+df.rename(columns={
+    'ROUTE_NAME': 'Route Name',
+    'Bus_Spare': 'Price',
+    'Bus_Rating': 'Rating'
+}, inplace=True)
 
-    if app_mode == "Filtered Data":
-        # Create a sidebar for Route selection
-        st.sidebar.title("Filters")
+# Sidebar filters
+st.sidebar.title("Filters")
+app_mode = st.selectbox("Select View", ["Filtered Data"])
 
-        # Filter by Route Name
-        route_options = df['Route Name'].unique()  # Get unique routes
-        selected_route = st.sidebar.selectbox("Select Route", route_options)
+if app_mode == "Filtered Data":
+    # Route filter
+    route_options = df['Route Name'].unique()
+    selected_route = st.sidebar.selectbox("Select Route", route_options)
+    filtered_data = df[df['Route Name'] == selected_route]
 
-        # Filter data based on selected Route Name
-        filtered_data = df[df['Route Name'] == selected_route]
+    # Sort by duration
+    st.sidebar.write("### Sort by Total Duration")
+    duration_sort_order = st.sidebar.selectbox("Sort by Duration", ["Lowest to Highest", "Highest to Lowest"])
+    filtered_data = filtered_data.sort_values(
+        by='Total Duration (Minutes)', 
+        ascending=(duration_sort_order == "Lowest to Highest")
+    )
 
-        # Sorting options for Total Duration
-        st.sidebar.write("### Sort by Total Duration")
-        duration_sort_order = st.sidebar.selectbox("Sort by Total Duration", ["Lowest to Highest", "Highest to Lowest"])
+    # Sort by price
+    st.sidebar.write("### Sort by Price")
+    price_sort_order = st.sidebar.selectbox("Sort by Price", ["Lowest to Highest", "Highest to Lowest"])
+    filtered_data = filtered_data.sort_values(
+        by='Price', 
+        ascending=(price_sort_order == "Lowest to Highest")
+    )
 
-        if duration_sort_order == "Lowest to Highest":
-            filtered_data = filtered_data.sort_values(by='Total Duration (Minutes)', ascending=True)
-        elif duration_sort_order == "Highest to Lowest":
-            filtered_data = filtered_data.sort_values(by='Total Duration (Minutes)', ascending=False)
+    # Sort by rating
+    st.sidebar.write("### Sort by Rating")
+    rating_sort_order = st.sidebar.selectbox("Sort by Rating", ["Highest to Lowest", "Lowest to Highest"])
+    filtered_data = filtered_data.sort_values(
+        by='Rating',
+        ascending=(rating_sort_order == "Lowest to Highest")
+    )
 
-        # Sorting options for Price
-        st.sidebar.write("### Sort by Price")
-        price_sort_order = st.sidebar.selectbox("Sort by Price", ["Lowest to Highest", "Highest to Lowest"])
+    # Duration slider
+    duration_min, duration_max = st.sidebar.slider(
+        "Filter by Duration (Minutes)",
+        int(df['Total Duration (Minutes)'].min()),
+        int(df['Total Duration (Minutes)'].max()),
+        (int(df['Total Duration (Minutes)'].min()), int(df['Total Duration (Minutes)'].max()))
+    )
+    filtered_data = filtered_data[
+        (filtered_data['Total Duration (Minutes)'] >= duration_min) &
+        (filtered_data['Total Duration (Minutes)'] <= duration_max)
+    ]
 
-        if price_sort_order == "Lowest to Highest":
-            filtered_data = filtered_data.sort_values(by='Price', ascending=True)
-        elif price_sort_order == "Highest to Lowest":
-            filtered_data = filtered_data.sort_values(by='Price', ascending=False)
+    # Price slider
+    price_min, price_max = st.sidebar.slider(
+        "Filter by Price (₹)",
+        int(df['Price'].min()),
+        int(df['Price'].max()),
+        (int(df['Price'].min()), int(df['Price'].max()))
+    )
+    filtered_data = filtered_data[
+        (filtered_data['Price'] >= price_min) &
+        (filtered_data['Price'] <= price_max)
+    ]
 
-        # Additional filters for duration and price
-        st.sidebar.write("### Filter by Duration/Price")
-        
-        # Filter by Total Duration (in minutes)
-        duration_min, duration_max = st.sidebar.slider(
-            "Select duration range (in minutes)", 
-            min_value=int(filtered_data['Total Duration (Minutes)'].min()), 
-            max_value=int(filtered_data['Total Duration (Minutes)'].max()), 
-            value=(int(filtered_data['Total Duration (Minutes)'].min()), int(filtered_data['Total Duration (Minutes)'].max()))
-        )
-        filtered_data = filtered_data[
-            (filtered_data['Total Duration (Minutes)'] >= duration_min) & 
-            (filtered_data['Total Duration (Minutes)'] <= duration_max)
-        ]
-        
-        # Filter by Price
-        price_min, price_max = st.sidebar.slider(
-            "Select price range (in ₹)", 
-            min_value=int(filtered_data['Price'].min()), 
-            max_value=int(filtered_data['Price'].max()), 
-            value=(int(filtered_data['Price'].min()), int(filtered_data['Price'].max()))
-        )
-        
-        filtered_data = filtered_data[
-            (filtered_data['Price'] >= price_min) & 
-            (filtered_data['Price'] <= price_max)
-        ]
-        
-        # Show the final filtered and sorted data
-        st.write(f"### Filtered Data (Route: {selected_route}, Duration: {duration_min}-{duration_max} minutes, Price: ₹{price_min}-{price_max}):")
-        st.dataframe(filtered_data)
+    # Rating slider
+    rating_min, rating_max = st.sidebar.slider(
+        "Filter by Rating",
+        float(df['Rating'].min()), 
+        float(df['Rating'].max()),
+        (float(df['Rating'].min()), float(df['Rating'].max()))
+    )
+    filtered_data = filtered_data[
+        (filtered_data['Rating'] >= rating_min) &
+        (filtered_data['Rating'] <= rating_max)
+    ]
 
-    elif app_mode == "Analysis Data":
-        # Analysis section where you can add summary statistics or other analysis
-        st.write("### Analysis Data")
-        
-        # Show summary statistics
-        if st.checkbox("Show Summary Statistics"):
-            st.write(df.describe())
-        
-        # Correlation matrix
-        if st.checkbox("Show Correlation Matrix"):
-            import seaborn as sns
-            import matplotlib.pyplot as plt
-            
-            correlation = df.corr()
-            fig, ax = plt.subplots(figsize=(10, 6))
-            sns.heatmap(correlation, annot=True, cmap='coolwarm', ax=ax)
-            st.pyplot(fig)
-        
-        # Show column names
-        st.write("### Column Names:")
-        st.write(df.columns)
-
-        # Show the dataframe in this analysis section
-        st.write("### Data Preview:")
-        st.dataframe(df.head())  # Show first 5 rows
-
+    # Display final result
+    st.write(f"### Filtered Results for Route: {selected_route}")
+    st.dataframe(filtered_data)
