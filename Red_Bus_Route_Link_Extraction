@@ -1,0 +1,79 @@
+states = {
+    'andhrapradesh': 'https://www.redbus.in/online-booking/apsrtc/?utm_source=rtchometile',
+    'kerala': 'https://www.redbus.in/online-booking/ksrtc-kerala/?utm_source=rtchometile',
+    'telangana': 'https://www.redbus.in/online-booking/tsrtc/?utm_source=rtchometile',
+    'rajasthan': 'https://www.redbus.in/online-booking/rsrtc/?utm_source=rtchometile',
+    'south_bengal': 'https://www.redbus.in/online-booking/south-bengal-state-transport-corporation-sbstc/?utm_source=rtchometile',
+    'uttar_pradesh': 'https://www.redbus.in/online-booking/uttar-pradesh-state-road-transport-corporation-upsrtc/?utm_source=rtchometile',
+    'haryana': 'https://www.redbus.in/online-booking/hrtc/?utm_source=rtchometile',
+    'assam': 'https://www.redbus.in/online-booking/astc/?utm_source=rtchometile',
+}
+#print(states['kerala'])
+#for state, url in states.items():
+#    print(f'state{state}, url_link{url}')
+import pandas as pd 
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
+import time 
+from selenium.webdriver.support import expected_conditions as EC
+import pymysql
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.common.action_chains import ActionChains
+from selenium.common.exceptions import NoSuchElementException, ElementClickInterceptedException, StaleElementReferenceException
+connection = pymysql.connect(
+    host='localhost',
+    user='root',
+    password='Arun@5851',
+    database='guvi'
+)
+cursor= connection.cursor()
+sql=""" create table if not exists red_bus_route_link (State_Name varchar(250), ROUTE_NAME VARCHAR(250) , ROUTE_LINK varchar (750))"""
+cursor.execute(sql)
+### Route name and Route link table has been succfully created
+sql="""show tables"""
+cursor.execute(sql)
+result=cursor.fetchall()
+for i in result:
+    print(i)
+
+sql='select * from red_bus_route_link'
+cursor.execute(sql)
+result=cursor.fetchall()
+for i in result:
+    print(i)
+
+
+for state, url in states.items():
+    driver = webdriver.Chrome()
+    driver.get(url)
+    time.sleep(3)
+
+    while True:
+        routes = driver.find_elements(By.XPATH, "//*[@class='route' and @href and @title]")
+
+        for route in routes:
+            route_name = route.get_attribute('title')
+            route_link = route.get_attribute('href')
+
+            # Insert into SQL
+            sql = "INSERT INTO red_bus_route_link (STATE_NAME, ROUTE_NAME, ROUTE_LINK) VALUES (%s, %s, %s)"
+            values = (state, route_name, route_link)
+            cursor.execute(sql, values)
+            connection.commit()
+
+            print(f"State: {state}, Route_name: {route_name}, Route_Link: {route_link}")
+
+        # Check for the presence of a "Next" button
+        try:b
+            next_button = driver.find_element(By.LINK_TEXT, "Next")
+            if "disabled" in next_button.get_attribute("class").lower():
+                break  # No more pages
+            else:
+                next_button.click()
+                time.sleep(3)
+        except:
+            break  # Next button not found — end of pagination
+
+    driver.quit()
+
