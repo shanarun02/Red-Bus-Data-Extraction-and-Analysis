@@ -1,0 +1,125 @@
+import pandas as pd 
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
+import time 
+from selenium.webdriver.support import expected_conditions as EC
+import pymysql
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.common.action_chains import ActionChains
+from selenium.common.exceptions import NoSuchElementException, ElementClickInterceptedException, StaleElementReferenceException
+
+
+
+
+driver = webdriver.Chrome()
+def safe_get_elements(selector, retries=3):
+    """Retries fetching elements to avoid stale reference errors."""
+    for _ in range(retries):
+        try:
+            return WebDriverWait(driver, 10).until(
+                EC.presence_of_all_elements_located((By.CSS_SELECTOR, selector))
+            )
+        except StaleElementReferenceException:
+            time.sleep(1)
+    return []
+
+def scroll_to_bottom():
+    """Scrolls the page down until it can't scroll anymore."""
+    last_height = driver.execute_script("return document.body.scrollHeight")
+    while True:
+        driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+        time.sleep(2)
+        new_height = driver.execute_script("return document.body.scrollHeight")
+        if new_height == last_height:
+            break
+        last_height = new_height
+
+def scrape_and_store(state, route_name, link):
+    while True:
+        try:
+            scroll_to_bottom()
+            time.sleep(1)
+
+            Bus_name = safe_get_elements("div.travels.lh-24.f-bold.d-color")
+            Bus_Type = safe_get_elements("div.bus-type.f-12.m-top-16.l-color.evBus")
+            Departure_Time = safe_get_elements("div.dp-time.f-19.d-color.f-bold")
+            Reach_Time = safe_get_elements("div.bp-time.f-19.d-color.disp-Inline")
+            Duration = safe_get_elements("div.dur.l-color.lh-24")
+            Bus_Spare = safe_get_elements("span.f-19.f-bold")
+            Bus_Rating = safe_get_elements("div[class='rating-sec lh-24']")
+
+            for i in range(len(Bus_name)):
+                try:
+                    bus_data = (
+                        state,
+                        route_name,
+                        link,
+                        Bus_name[i].text if i < len(Bus_name) else "",
+                        Bus_Type[i].text if i < len(Bus_Type) else "",
+                        Departure_Time[i].text if i < len(Departure_Time) else "",
+                        Reach_Time[i].text if i < len(Reach_Time) else "",
+                        Duration[i].text if i < len(Duration) else "",
+                        Bus_Spare[i].text if i < len(Bus_Spare) else "",
+                        Bus_Rating[i].text if i < len(Bus_Rating) else "",
+                    )
+
+                    cursor.execute("""
+                        INSERT INTO Red_bus_details (
+                            State_Name, ROUTE_NAME, ROUTE_LINK,
+                            Bus_Name, Bus_Type, Departure_Time,
+                            Reach_Time, Duration, Bus_Spare, Bus_Rating
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """, bus_data)
+                    connection.commit()
+                except Exception as db_error:
+                    print(f"[DB ERROR] Skipping record due to error: {db_error}")
+                    continue
+
+            try:
+                next_button = driver.find_element(By.CSS_SELECTOR, "div.pagination > div.next")
+                if "disabled" in next_button.get_attribute("class"):
+                    break
+                else:
+                    next_button.click()
+                    time.sleep(5)
+            except (NoSuchElementException, ElementClickInterceptedException):
+                print("Next button not found or can't click. Ending route.")
+                break
+
+        except Exception as scrape_error:
+            print(f"[SCRAPE ERROR] Error during scraping: {scrape_error}")
+            break
+
+# Fetch the routes from the database
+cursor.execute("SELECT State_Name, ROUTE_NAME, ROUTE_LINK FROM red_bus_route_link")
+routes = cursor.fetchall()
+
+# Main execution with guaranteed driver cleanup
+try:
+    for state, route_name, link in routes:
+        try:
+            print(f"Processing: {route_name} ({link})")
+            driver.get(link)
+            time.sleep(5)
+            scrape_and_store(state, route_name, link)
+        except Exception as route_error:
+            print(f"[ROUTE ERROR] Error processing route {link}: {route_error}")
+finally:
+    driver.quit()
+
+
+sql='select * from Red_bus_details'
+cursor.execute(sql)
+result=cursor.fetchall()
+for i in result:
+    print(i)
+
+
+
+sql = 'SELECT * FROM Red_bus_details LIMIT 1'  # LIMIT 1 to avoid fetching too much data
+cursor.execute(sql)
+
+# Print only column names
+column_names = [desc[0] for desc in cursor.description]
+print("Column names:", column_names)
